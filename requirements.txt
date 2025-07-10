@@ -3,5 +3,5 @@ tensorflow>=2.10.0
 opencv-python-headless
 pillow
 numpy
-openai
+openai==0.28.0
 requests
