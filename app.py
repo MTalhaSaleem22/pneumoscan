@@ -112,22 +112,38 @@ if uploaded_file is not None:
     if show_gradcam:
         st.markdown("### 🔍 Grad-CAM Heatmap")
         heatmap = generate_gradcam(model, img_array, np.argmax(all_probs))
+        
+        # Resize and normalize original image
         original = np.array(image_data.resize((224, 224)).convert('RGB'))
-        heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-        overlay = cv2.addWeighted(original, 0.6, heatmap, 0.4, 0)
+        original = (original / 255.0 * 255).astype(np.uint8)  # Ensure original is uint8
 
-        gradcam_text = {
-            'normal': "Model focused on clear lung fields.",
-            'pneumonia': "Highlighted fluid-filled/inflamed regions.",
-            'lung_cancer': "Attention on nodules or dense growth.",
-            'tuberculosis': "Focus on upper lung areas, patchy shadows."
-        }
+        # Create a mask for the infected area based on the heatmap
+        # Threshold the heatmap to find areas of interest
+        thresholded_heatmap = np.where(heatmap > 0.5, 1, 0).astype(np.uint8)  # Adjust threshold as necessary
 
+        # Find contours of the highlighted areas
+        contours, _ = cv2.findContours(thresholded_heatmap, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Create a black mask
+        mask = np.zeros_like(original)
+
+        # Draw contours on the mask
+        for contour in contours:
+            if cv2.contourArea(contour) > 50:  # Filter small contours
+                (x, y), radius = cv2.minEnclosingCircle(contour)
+                center = (int(x), int(y))
+                radius = int(radius)
+                cv2.circle(mask, center, radius, (255, 0, 0), -1)  # Filled red circle
+
+        # Blend the original image with the mask
+        overlay = cv2.addWeighted(original, 1, mask, 0.5, 0)  # Adjust alpha for effect
+
+        # Display the final overlay
         cam_col1, cam_col2 = st.columns([1, 1])
         with cam_col1:
-            st.markdown(f"**Model Focus:** {gradcam_text.get(label, 'Model highlights uncertain regions.')}")
+            st.markdown("**Model Focus:** Highlighting infected areas.")
         with cam_col2:
-            st.image(overlay, caption=f"🧭 Grad-CAM Overlay: {label.upper()}", use_container_width=True)
+            st.image(overlay, caption="🧭 Infected Area Highlighted", use_container_width=True)
 
 # --- CHATBOT UI SECTION ---
 if chat_enabled:

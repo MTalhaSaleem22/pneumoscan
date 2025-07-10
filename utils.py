@@ -29,7 +29,7 @@ def predict_class(model, img_array):
 
 # Generate Grad-CAM heatmap
 def generate_gradcam(model, img_array, class_index):
-    last_conv_layer_name = 'conv5_block16_concat'
+    last_conv_layer_name = 'conv5_block16_concat'  # Adjust based on your model architecture
     grad_model = tf.keras.models.Model(
         [model.inputs],
         [model.get_layer(last_conv_layer_name).output, model.output]
@@ -48,5 +48,4 @@ def generate_gradcam(model, img_array, class_index):
     heatmap /= np.max(heatmap) if np.max(heatmap) != 0 else 1
 
     heatmap_resized = cv2.resize(heatmap, (img_size, img_size))
-    heatmap_colored = cv2.applyColorMap(np.uint8(255 * heatmap_resized), cv2.COLORMAP_JET)
-    return heatmap_colored
+    return heatmap_resized  # Return the raw heatmap for later processing
