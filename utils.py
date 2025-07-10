@@ -48,5 +48,6 @@ def generate_gradcam(model, img_array, class_index):
     heatmap /= np.max(heatmap) if np.max(heatmap) != 0 else 1
 
     heatmap_resized = cv2.resize(heatmap, (img_size, img_size))
-    heatmap_colored = cv2.applyColorMap(np.uint8(255 * heatmap_resized), cv2.COLORMAP_JET)
+    heatmap_colored = cv2.applyColorMap(np.uint8(255 * heatmap_resized), cv2.COLORMAP_HOT)  # Change to HOT for intensity
+
     return heatmap_colored
