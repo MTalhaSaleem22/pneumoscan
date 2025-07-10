@@ -112,26 +112,9 @@ if uploaded_file is not None:
     if show_gradcam:
         st.markdown("### 🔍 Grad-CAM Heatmap")
         heatmap = generate_gradcam(model, img_array, np.argmax(all_probs))
-        
-        # Resize and normalize original image
         original = np.array(image_data.resize((224, 224)).convert('RGB'))
-        original = original / 255.0  # Normalize to [0, 1]
-        
-        # Convert to uint8
-        original = (original * 255).astype(np.uint8)
-
-        # Ensure heatmap is of type uint8
-        heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)  # Convert if needed
-        heatmap = np.uint8(heatmap)  # Ensure heatmap is uint8
-
-        # Adjust weights for more impact
-        overlay = cv2.addWeighted(original, 0.4, heatmap, 0.6, 0)
-
-        # Optionally, add noise for a panic effect
-        noise = np.random.normal(0, 0.1, overlay.shape).astype(np.float32)
-        overlay = cv2.add(overlay.astype(np.float32), noise)
-        overlay = np.clip(overlay, 0, 255)  # Ensure values are within valid range
-        overlay = overlay.astype(np.uint8)  # Convert back to uint8 for display
+        heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+        overlay = cv2.addWeighted(original, 0.6, heatmap, 0.4, 0)
 
         gradcam_text = {
             'normal': "Model focused on clear lung fields.",
