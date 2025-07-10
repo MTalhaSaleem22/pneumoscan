@@ -8,6 +8,23 @@ from utils import load_trained_model, preprocess_image, predict_class, generate_
 from datetime import datetime
 import openai
 
+def is_valid_xray(image_array):
+    gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
+    mean_intensity = np.mean(gray)
+    std_dev = np.std(gray)
+
+    # Keep only minimal intensity filter
+    if mean_intensity < 25 or mean_intensity > 240:
+        return False
+
+    # Loose edge check — only flag if it's very high
+    edges = cv2.Canny(gray, 100, 200)
+    edge_ratio = np.sum(edges > 0) / (gray.shape[0] * gray.shape[1])
+    if edge_ratio > 0.25:  # reject only extremely detailed images
+        return False
+
+    return True
+
 # Load API key for Together.ai
 openai.api_key = st.secrets["TOGETHER_API_KEY"]
 openai.api_base = "https://api.together.xyz/v1"
@@ -26,7 +43,7 @@ chat_enabled = st.sidebar.checkbox("💬 Show PneumoBot", value=True)
 # Main Header
 title_col, img_col = st.columns([1, 2])
 with title_col:
-    st.title("🧠 PneumoScan")
+    st.title("PneumoScan")
     st.markdown("""
     PneumoScan is an AI-powered tool for detecting:
     - **Normal**
@@ -45,6 +62,12 @@ model = get_model()
 # --- MODEL PREDICTION SECTION ---
 if uploaded_file is not None:
     image_data = Image.open(uploaded_file)
+    image_np = np.array(image_data.resize((224, 224)).convert("RGB"))
+
+    if not is_valid_xray(image_np):
+        st.error("🚫 This image doesn't appear to be a valid chest X-ray. Please upload a correct medical image.")
+        st.stop()
+
     img_array = preprocess_image(uploaded_file)
 
     # Predict
