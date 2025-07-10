@@ -43,11 +43,18 @@ st.set_page_config(page_title="PneumoScan - Lung Disease Classifier", layout="wi
 # Sidebar
 st.sidebar.title("🩺 PneumoScan Controls")
 st.sidebar.markdown("Upload a chest X-ray and view the AI-based prediction.")
+
+# Sidebar uploader
 uploaded_file = st.sidebar.file_uploader("Choose a chest X-ray image", type=["jpg", "jpeg", "png"])
-# Detect file change and trigger rerun
+
+# Initialize the session key if not present
+if "last_uploaded_filename" not in st.session_state:
+    st.session_state["last_uploaded_filename"] = None
+
+# If a new image is uploaded, trigger a rerun
 if uploaded_file is not None:
-    if uploaded_file.name != st.session_state.last_uploaded_filename:
-        st.session_state.last_uploaded_filename = uploaded_file.name
+    if uploaded_file.name != st.session_state["last_uploaded_filename"]:
+        st.session_state["last_uploaded_filename"] = uploaded_file.name
         st.experimental_rerun()
 
 show_probs = st.sidebar.checkbox("Show class probabilities", value=True)
