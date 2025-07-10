@@ -61,7 +61,7 @@ with title_col:
     """)
 
 # Load model
-@st.cache_resource
+# @st.cache_resource
 def get_model():
     return load_trained_model()
 
