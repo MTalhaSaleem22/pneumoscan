@@ -44,6 +44,12 @@ st.set_page_config(page_title="PneumoScan - Lung Disease Classifier", layout="wi
 st.sidebar.title("🩺 PneumoScan Controls")
 st.sidebar.markdown("Upload a chest X-ray and view the AI-based prediction.")
 uploaded_file = st.sidebar.file_uploader("Choose a chest X-ray image", type=["jpg", "jpeg", "png"])
+# Detect file change and trigger rerun
+if uploaded_file is not None:
+    if uploaded_file.name != st.session_state.last_uploaded_filename:
+        st.session_state.last_uploaded_filename = uploaded_file.name
+        st.experimental_rerun()
+
 show_probs = st.sidebar.checkbox("Show class probabilities", value=True)
 show_gradcam = st.sidebar.checkbox("Show Grad-CAM heatmap", value=True)
 chat_enabled = st.sidebar.checkbox("💬 Show PneumoBot", value=True)
@@ -61,7 +67,7 @@ with title_col:
     """)
 
 # Load model
-# @st.cache_resource
+@st.cache_resource
 def get_model():
     return load_trained_model()
 
