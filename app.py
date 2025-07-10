@@ -32,7 +32,6 @@ def has_face(image_np):
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
     return len(faces) > 0
 
-
 # Load API key for Together.ai
 openai.api_key = st.secrets["TOGETHER_API_KEY"]
 openai.api_base = "https://api.together.xyz/v1"
@@ -46,17 +45,6 @@ st.sidebar.markdown("Upload a chest X-ray and view the AI-based prediction.")
 
 # Sidebar uploader
 uploaded_file = st.sidebar.file_uploader("Choose a chest X-ray image", type=["jpg", "jpeg", "png"])
-
-# Initialize the session key if not present
-if "last_uploaded_filename" not in st.session_state:
-    st.session_state["last_uploaded_filename"] = None
-
-# If a new image is uploaded, trigger a rerun
-if uploaded_file is not None:
-    if uploaded_file.name != st.session_state["last_uploaded_filename"]:
-        st.session_state["last_uploaded_filename"] = uploaded_file.name
-        st.experimental_rerun()
-
 show_probs = st.sidebar.checkbox("Show class probabilities", value=True)
 show_gradcam = st.sidebar.checkbox("Show Grad-CAM heatmap", value=True)
 chat_enabled = st.sidebar.checkbox("💬 Show PneumoBot", value=True)
