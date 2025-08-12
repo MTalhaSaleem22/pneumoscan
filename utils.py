@@ -52,74 +52,102 @@ def generate_gradcam(model, img_array, class_index):
     return heatmap_resized  # Return the raw heatmap for later processing
 
 
-# ---- Grad-CAM Panic-Film (smooth overlay + red circle(s)) ----
 # ---- Grad-CAM Panic-Film (improved: percentile threshold + weighted centroid) ----
 def generate_gradcam_panic_film(model, img_array, class_index,
                                 last_conv_layer_name="conv5_block16_concat",
                                 blur_ksize=11, percentile=90, min_area=120):
-    """Return (heat, circles) where circles=[(cx, cy, r)] in model input pixels.
-
-    - Uses percentile threshold (default 90th) to adapt per-image.
-
-    - Weighted centroid + equivalent radius for stable circle.
-
     """
-    grad_model = tf.keras.models.Model([model.inputs],
-                                        [model.get_layer(last_conv_layer_name).output, model.output])
-    with tf.GradientTape() as tape:
-        conv_outputs, preds = grad_model(img_array)
-        loss = preds[:, class_index]
-    grads = tape.gradient(loss, conv_outputs)[0]
-    pooled_grads = tf.reduce_mean(grads, axis=(0, 1))
-    conv_outputs = conv_outputs[0]
+    Return:
+        heat (H,W) float32 in [0,1]
+        circles: list of (cx, cy, r) in model-input pixels (224x224)
+    """
+    # 1) Build a grad model that gives conv feature maps + logits
+    grad_model = tf.keras.models.Model(
+        [model.inputs],
+        [model.get_layer(last_conv_layer_name).output, model.output]
+    )
 
-    # Raw heat
-    heat = tf.reduce_sum(conv_outputs * pooled_grads, axis=-1).numpy()
+    with tf.GradientTape() as tape:
+        # 2) Forward pass
+        outputs = grad_model(img_array, training=False)
+
+        # 3) Unpack safely (Keras can return lists/tuples)
+        if isinstance(outputs, (list, tuple)) and len(outputs) == 2:
+            conv_outputs, preds = outputs
+        else:
+            # fallback if nested
+            conv_outputs, preds = outputs[0], outputs[1]
+
+        if isinstance(conv_outputs, (list, tuple)):
+            conv_outputs = conv_outputs[0]
+        if isinstance(preds, (list, tuple)):
+            preds = preds[0]
+
+        # 4) Ensure tensors
+        conv_outputs = tf.convert_to_tensor(conv_outputs)
+        preds = tf.convert_to_tensor(preds)
+
+        # 5) Select the class score
+        loss = preds[:, class_index]
+
+    # 6) Get gradients w.r.t. conv maps
+    grads = tape.gradient(loss, conv_outputs)
+    if isinstance(grads, (list, tuple)):
+        grads = grads[0]
+
+    # 7) Remove batch dims
+    conv_no_batch = conv_outputs[0] if len(conv_outputs.shape) == 4 else conv_outputs
+    grads_no_batch = grads[0] if len(grads.shape) == 4 else grads
+
+    # 8) Channel-wise importance and raw heat
+    pooled_grads = tf.reduce_mean(grads_no_batch, axis=(0, 1))         # (C,)
+    heat = tf.reduce_sum(conv_no_batch * pooled_grads, axis=-1).numpy()  # (H,W)
+
+    # 9) Normalize and resize to model input size (224x224)
     heat = np.maximum(heat, 0)
-    heat = heat / (heat.max() if heat.max() != 0 else 1.0)
+    maxv = heat.max() if heat.max() != 0 else 1.0
+    heat = (heat / maxv).astype(np.float32)
     heat = cv2.resize(heat, (img_size, img_size), interpolation=cv2.INTER_CUBIC)
 
-    # Smooth
+    # 10) Optional smoothing
     if blur_ksize and blur_ksize >= 3:
         heat = cv2.GaussianBlur(heat, (blur_ksize, blur_ksize), 0)
 
-    # Adaptive threshold (percentile)
+    # 11) Adaptive threshold (percentile) → binary mask
     thr = np.percentile(heat, percentile)
     bin_map = (heat >= thr).astype("uint8")
 
-    # Morphological cleanup
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
+    # 12) Morphological cleanup
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     bin_map = cv2.morphologyEx(bin_map, cv2.MORPH_CLOSE, kernel, iterations=1)
     bin_map = cv2.morphologyEx(bin_map, cv2.MORPH_OPEN, kernel, iterations=1)
 
-    # Connected components
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(bin_map, connectivity=8)
+    # 13) Connected components → circles (weighted centroid + eq. radius)
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(bin_map, connectivity=8)
     circles = []
     for label in range(1, num_labels):  # skip background
         area = stats[label, cv2.CC_STAT_AREA]
         if area < float(min_area):
             continue
-        # Weighted centroid within this component
+
         mask = (labels == label)
         ys, xs = np.nonzero(mask)
         weights = heat[ys, xs] + 1e-6
         cy = int(np.average(ys, weights=weights))
         cx = int(np.average(xs, weights=weights))
-        # Equivalent radius (area -> radius), add small margin
         r = int(np.sqrt(area / np.pi) * 1.10)
         circles.append((cx, cy, r))
 
-    # Keep the most salient region by max integrated heat
+    # 14) Keep the most salient component (by integrated heat) or fallback
     if len(circles) > 1:
         scores = []
+        Y, X = np.ogrid[:img_size, :img_size]
         for (cx, cy, r) in circles:
-            # score = sum of heat within the circle
-            Y, X = np.ogrid[:img_size, :img_size]
-            mask = (X - cx)**2 + (Y - cy)**2 <= r**2
+            mask = (X - cx) ** 2 + (Y - cy) ** 2 <= r ** 2
             scores.append(heat[mask].sum())
         circles = [circles[int(np.argmax(scores))]]
     elif len(circles) == 0:
-        # fallback to hottest spot
         yx = np.unravel_index(np.argmax(heat), heat.shape)
         circles = [(int(yx[1]), int(yx[0]), 16)]
+
     return heat.astype(np.float32), circles
